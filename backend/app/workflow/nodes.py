@@ -9,6 +9,19 @@ from app.workflow.research.factory import get_provider
 from app.workflow.llm import get_llm
 from app.workflow.schema import BusinessReport, coerce_str_list
 
+# Voice for the briefing: crisp analyst, not formal-bloated AI prose.
+_REPORT_STYLE = (
+    "Write like a sharp human analyst, not an AI. Rules:\n"
+    "- No significance inflation or promotional language (\"pivotal\", "
+    "\"breathtaking\", \"a testament to\").\n"
+    "- No AI vocabulary: landscape, showcasing, delve, robust, leverage, elevate, "
+    "foster, seamless, unlock, navigate.\n"
+    "- Plain verbs (\"is\", \"has\") instead of \"serves as\", \"boasts\", \"features\".\n"
+    "- No negative parallelisms (\"not just X, but Y\"). No forced triads.\n"
+    "- Never use em dashes or en dashes. Use commas or periods.\n"
+    "- Cut filler. No hedging. No sycophancy. State facts directly.\n\n"
+)
+
 # Per-source content fed to the LLM is truncated to bound tokens/cost.
 _MAX_CONTENT_CHARS = 1200
 # Cap how many sources are fed to a single LLM call (keeps prompts well under
@@ -206,7 +219,8 @@ def report_generation(state: dict) -> dict:
         "outreach strategy must be derived from the findings AND the meeting "
         "objective. Populate `unknowns` from the listed gaps and errors. The "
         "`sources` field must list the real sources provided.\n\n"
-        f"Company: {state.get('company_name')}\n"
+        + _REPORT_STYLE
+        + f"Company: {state.get('company_name')}\n"
         f"Website: {state.get('website')}\n"
         f"Objective: {state.get('objective')}\n\n"
         f"DRAFT:\n{state.get('draft')}\n\n"
@@ -224,4 +238,15 @@ def report_generation(state: dict) -> dict:
     if not report.sources and source_refs:
         report.sources = source_refs  # type: ignore[assignment]
 
-    return {"current_step": "report_generation", "report": report.model_dump()}
+    return {"current_step": "report_generation", "report": _strip_dashes(report.model_dump())}
+
+
+def _strip_dashes(value):
+    """Hard-enforce the no-em/en-dash rule across the report's text (recursive)."""
+    if isinstance(value, str):
+        return value.replace(" — ", ", ").replace("—", ", ").replace(" – ", ", ").replace("–", "-")
+    if isinstance(value, list):
+        return [_strip_dashes(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _strip_dashes(v) for k, v in value.items()}
+    return value
