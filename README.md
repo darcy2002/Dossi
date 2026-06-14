@@ -77,6 +77,18 @@ python -m app.workflow.run_workflow \
   --objective "Sell them our enterprise SSO integration"
 ```
 
+### Running tests
+
+```bash
+cd backend && source .venv/bin/activate
+pip install -r requirements-dev.txt
+pytest
+```
+
+The suite covers the LangGraph retry routing, auth, and the session API
+(ownership + validation). It uses an isolated SQLite database and stubs the
+workflow launch, so it runs in seconds and makes no network calls.
+
 ---
 
 ## Environment variables
