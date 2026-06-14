@@ -2,7 +2,7 @@
 
 AI research copilot for meeting prep. Give it a company name, website, and meeting objective. It researches the company and comes back with a nine-section briefing: overview, products, customers, business signals, risks, discovery questions, outreach strategy, unknowns, and sources. Then you can chat with the briefing to draft emails, prep talking points, or dig into anything the report surfaced.
 
-**Live URL:** _coming soon_  
+**Live URL:** https://dossi-frontend.onrender.com  
 **Demo video:** _coming soon_
 
 ---
