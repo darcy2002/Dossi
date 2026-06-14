@@ -9,7 +9,8 @@ import { Landing } from "@/pages/Landing";
 import { Login } from "@/pages/Login";
 import { Signup } from "@/pages/Signup";
 import { AppLayout } from "@/pages/AppLayout";
-import { NewResearch } from "@/pages/NewResearch";
+import { Home } from "@/pages/Home";
+import { History } from "@/pages/History";
 import { SessionView } from "@/pages/SessionView";
 import "./index.css";
 
@@ -35,7 +36,8 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
                   </ProtectedRoute>
                 }
               >
-                <Route index element={<NewResearch />} />
+                <Route index element={<Home />} />
+                <Route path="history" element={<History />} />
                 <Route path="sessions/:id" element={<SessionView />} />
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />

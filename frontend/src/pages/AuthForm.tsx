@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Card, Spinner } from "@/components/ui/misc";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { GlowBackground } from "@/components/GlowBackground";
 import { useAuth } from "@/lib/auth";
 import { useLogin, useSignup } from "@/lib/queries";
 import { ApiError } from "@/lib/api";
@@ -36,16 +37,17 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
         : null;
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
-      <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-5">
+    <div className="relative flex min-h-screen flex-col overflow-hidden bg-background">
+      <GlowBackground />
+      <header className="relative z-10 mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-5">
         <Link to="/" className="text-lg font-bold">
           doss<span className="text-primary">i</span>
         </Link>
         <ThemeToggle />
       </header>
 
-      <main className="flex flex-1 items-center justify-center px-6 pb-20">
-        <Card className="w-full max-w-sm p-8">
+      <main className="relative z-10 flex flex-1 items-center justify-center px-6 pb-20">
+        <Card className="w-full max-w-sm glass glow-ring p-8">
           <h1 className="text-2xl font-bold">{isLogin ? "Welcome back" : "Create your account"}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             {isLogin ? "Log in to your research workspace." : "Start prepping for meetings in minutes."}

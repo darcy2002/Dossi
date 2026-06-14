@@ -89,7 +89,7 @@ export function ChatPanel({ sessionId }: { sessionId: number }) {
   }
 
   return (
-    <Card className="flex h-full min-h-[420px] flex-col">
+    <Card className="flex h-full min-h-[420px] flex-col glass">
       <div className="border-b border-border px-4 py-3">
         <h3 className="text-sm font-semibold">Ask about this briefing</h3>
         <p className="text-xs text-muted-foreground">Answers come only from the research.</p>

@@ -6,7 +6,7 @@ const KEY = "dossi_theme";
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>(
-    () => (localStorage.getItem(KEY) as Theme) ?? "light"
+    () => (localStorage.getItem(KEY) as Theme) ?? "dark"
   );
 
   useEffect(() => {

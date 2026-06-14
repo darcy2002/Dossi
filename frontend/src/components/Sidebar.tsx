@@ -1,25 +1,34 @@
-import { useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
-import { LogOut, Plus, Search } from "lucide-react";
-import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { Clock, PanelLeftClose, PanelLeft, Plus, Settings } from "lucide-react";
 import { Skeleton } from "@/components/ui/misc";
-import { StatusBadge } from "@/components/StatusBadge";
 import { ErrorState } from "@/components/states";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { useAuth } from "@/lib/auth";
+import { UserMenu } from "@/components/UserMenu";
 import { useSessions } from "@/lib/queries";
+import { cn } from "@/lib/utils";
 
-export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
-  const { user, logout } = useAuth();
+const STATUS_DOT: Record<string, string> = {
+  pending: "bg-muted-foreground",
+  running: "bg-primary animate-pulse",
+  complete: "bg-green-500",
+  needs_review: "bg-amber-500",
+  failed: "bg-destructive",
+};
+
+export function Sidebar({
+  collapsed,
+  onToggle,
+  onNavigate,
+}: {
+  collapsed: boolean;
+  onToggle?: () => void;
+  onNavigate?: () => void;
+}) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { id } = useParams();
   const { data, isLoading, isError, refetch } = useSessions();
-  const [query, setQuery] = useState("");
-
-  const filtered = (data ?? []).filter((s) =>
-    s.company_name.toLowerCase().includes(query.toLowerCase())
-  );
+  const recent = (data ?? []).slice(0, 8);
 
   function go(path: string) {
     navigate(path);
@@ -27,71 +36,99 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   }
 
   return (
-    <div className="flex h-full flex-col bg-card">
-      <div className="flex items-center justify-between px-4 py-4">
-        <Link to="/app" onClick={onNavigate} className="text-lg font-bold">
-          doss<span className="text-primary">i</span>
-        </Link>
-        <ThemeToggle />
+    <div className="flex h-full flex-col glass">
+      {/* Header: brand + collapse toggle */}
+      <div className={cn("flex items-center px-3 py-4", collapsed ? "justify-center" : "justify-between")}>
+        {!collapsed && (
+          <Link to="/app" onClick={onNavigate} className="pl-1 text-lg font-bold">
+            doss<span className="text-primary">i</span>
+          </Link>
+        )}
+        {onToggle && (
+          <button
+            onClick={onToggle}
+            className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+            aria-label="Toggle sidebar"
+          >
+            {collapsed ? <PanelLeft className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
+          </button>
+        )}
       </div>
 
-      <div className="space-y-3 px-3">
-        <Button className="w-full gap-2" onClick={() => go("/app")}>
-          <Plus className="h-4 w-4" /> New research
-        </Button>
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            className="pl-8"
-            placeholder="Search sessions"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-        </div>
+      {/* New conversation */}
+      <div className="px-3">
+        <button
+          onClick={() => go("/app")}
+          title="Start new conversation"
+          className={cn(
+            "flex w-full items-center gap-2 rounded-lg bg-primary px-3 py-2.5 text-sm font-medium text-primary-foreground transition hover:opacity-90",
+            collapsed && "justify-center px-0"
+          )}
+        >
+          <Plus className="h-4 w-4" />
+          {!collapsed && "Start new conversation"}
+        </button>
       </div>
 
-      <nav className="mt-3 flex-1 space-y-1 overflow-y-auto px-3 pb-3">
-        {isLoading &&
-          Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-12 w-full" />
-          ))}
-        {isError && <ErrorState message="Couldn't load sessions." onRetry={() => refetch()} />}
-        {!isLoading && !isError && filtered.length === 0 && (
-          <p className="px-2 py-6 text-center text-sm text-muted-foreground">
-            {query ? "No matches." : "No research yet. Start one above."}
+      {/* Recent + history */}
+      <nav className="mt-4 flex-1 overflow-y-auto px-3">
+        {!collapsed && (
+          <p className="px-2 pb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Recent
           </p>
         )}
-        {filtered.map((s) => (
-          <button
-            key={s.id}
-            onClick={() => go(`/app/sessions/${s.id}`)}
-            className={`flex w-full flex-col gap-1 rounded-md px-3 py-2 text-left transition-colors hover:bg-muted ${
-              String(s.id) === id ? "bg-muted" : ""
-            }`}
-          >
-            <span className="truncate text-sm font-medium">{s.company_name}</span>
-            <StatusBadge status={s.status} />
-          </button>
-        ))}
+        {isLoading &&
+          Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="mb-1 h-8 w-full" />)}
+        {isError && !collapsed && (
+          <ErrorState message="Couldn't load." onRetry={() => refetch()} />
+        )}
+        {!isLoading &&
+          recent.map((s) => {
+            const active = String(s.id) === id;
+            return (
+              <button
+                key={s.id}
+                onClick={() => go(`/app/sessions/${s.id}`)}
+                title={s.company_name}
+                className={cn(
+                  "mb-0.5 flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm transition-colors hover:bg-muted",
+                  active && "bg-muted",
+                  collapsed && "justify-center px-0"
+                )}
+              >
+                <span className={cn("h-2 w-2 shrink-0 rounded-full", STATUS_DOT[s.status])} />
+                {!collapsed && <span className="truncate">{s.company_name}</span>}
+              </button>
+            );
+          })}
+
+        <button
+          onClick={() => go("/app/history")}
+          title="History"
+          className={cn(
+            "mt-2 flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+            location.pathname === "/app/history" && "bg-muted text-foreground",
+            collapsed && "justify-center px-0"
+          )}
+        >
+          <Clock className="h-4 w-4 shrink-0" />
+          {!collapsed && "History"}
+        </button>
       </nav>
 
-      <div className="border-t border-border p-3">
-        <div className="flex items-center justify-between gap-2">
-          <span className="truncate text-xs text-muted-foreground" title={user?.email}>
-            {user?.email}
-          </span>
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Sign out"
-            onClick={() => {
-              logout();
-              navigate("/login");
-            }}
+      {/* Bottom: theme toggle above settings, then user */}
+      <div className="space-y-1 border-t border-border p-3">
+        <div className={cn("flex items-center", collapsed ? "flex-col gap-1" : "gap-1")}>
+          <ThemeToggle />
+          <button
+            className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+            aria-label="Settings"
+            title="Settings"
           >
-            <LogOut className="h-4 w-4" />
-          </Button>
+            <Settings className="h-4 w-4" />
+          </button>
         </div>
+        <UserMenu collapsed={collapsed} />
       </div>
     </div>
   );

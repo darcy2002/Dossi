@@ -5,39 +5,43 @@
 @layer base {
   :root {
     --background: 0 0% 100%;
-    --foreground: 340 15% 15%;
+    --foreground: 240 20% 12%;
     --card: 0 0% 100%;
-    --card-foreground: 340 15% 15%;
-    --primary: 330 81% 60%;
+    --card-foreground: 240 20% 12%;
+    --primary: 335 64% 50%;
     --primary-foreground: 0 0% 100%;
-    --muted: 330 30% 96%;
-    --muted-foreground: 340 8% 46%;
-    --accent: 330 60% 95%;
-    --accent-foreground: 330 81% 40%;
+    --muted: 240 20% 96%;
+    --muted-foreground: 240 8% 46%;
+    --accent: 330 60% 96%;
+    --accent-foreground: 330 81% 42%;
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
-    --border: 330 25% 91%;
-    --input: 330 25% 91%;
+    --border: 240 16% 90%;
+    --input: 240 16% 90%;
     --ring: 330 81% 60%;
-    --radius: 0.75rem;
+    --glow: 330 90% 62%;
+    --glow-2: 270 85% 62%;
+    --radius: 0.85rem;
   }
 
   .dark {
-    --background: 340 18% 8%;
-    --foreground: 330 20% 96%;
-    --card: 340 16% 11%;
-    --card-foreground: 330 20% 96%;
-    --primary: 330 81% 66%;
-    --primary-foreground: 340 30% 10%;
-    --muted: 340 12% 18%;
-    --muted-foreground: 330 12% 65%;
-    --accent: 340 14% 20%;
-    --accent-foreground: 330 81% 80%;
-    --destructive: 0 63% 50%;
+    --background: 240 26% 5%;
+    --foreground: 240 20% 96%;
+    --card: 240 22% 9%;
+    --card-foreground: 240 20% 96%;
+    --primary: 330 76% 79%;
+    --primary-foreground: 330 45% 12%;
+    --muted: 240 16% 16%;
+    --muted-foreground: 240 12% 64%;
+    --accent: 240 18% 18%;
+    --accent-foreground: 330 85% 80%;
+    --destructive: 0 65% 55%;
     --destructive-foreground: 0 0% 100%;
-    --border: 340 12% 20%;
-    --input: 340 12% 22%;
-    --ring: 330 81% 66%;
+    --border: 240 16% 18%;
+    --input: 240 16% 20%;
+    --ring: 330 85% 64%;
+    --glow: 320 90% 58%;
+    --glow-2: 265 90% 60%;
   }
 
   * {
@@ -46,7 +50,55 @@
   body {
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
-    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-family: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
     -webkit-font-smoothing: antialiased;
   }
+}
+
+@layer utilities {
+  /* Translucent glass surface used across the shell. */
+  .glass {
+    background-color: hsl(var(--card) / 0.6);
+    backdrop-filter: blur(12px);
+  }
+  .glow-ring {
+    box-shadow: 0 0 0 1px hsl(var(--border)),
+      0 0 40px -8px hsl(var(--glow) / 0.45);
+  }
+  .font-serif-italic {
+    font-family: "Instrument Serif", ui-serif, Georgia, serif;
+    font-style: italic;
+  }
+  .font-mono {
+    font-family: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  /* Masked hairline grid — adapts to theme via foreground alpha. */
+  .grid-bg {
+    background-image:
+      linear-gradient(to right, hsl(var(--foreground) / 0.04) 1px, transparent 1px),
+      linear-gradient(to bottom, hsl(var(--foreground) / 0.04) 1px, transparent 1px);
+    background-size: 64px 64px;
+    -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 25%, black 40%, transparent 80%);
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 25%, black 40%, transparent 80%);
+  }
+  /* Subtle film grain for depth on dark surfaces. */
+  .grain::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.4;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+    mix-blend-mode: overlay;
+  }
+}
+
+@keyframes orb-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.95; }
+  50% { transform: scale(1.04); opacity: 1; }
+}
+.animate-orb-pulse { animation: orb-pulse 4.5s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-orb-pulse { animation: none; }
 }
