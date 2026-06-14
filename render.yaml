@@ -1,0 +1,50 @@
+# Render Blueprint — deploys the backend web service and the frontend static site.
+# In the Render dashboard: New > Blueprint > pick this repo. Render reads this file.
+# Secret values (sync: false) are entered in the dashboard, never committed.
+
+services:
+  # --- Backend: FastAPI ----------------------------------------------------
+  - type: web
+    name: dossi-backend
+    runtime: python
+    rootDir: backend
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: LLM_PROVIDER
+        value: anthropic
+      - key: LLM_MODEL
+        value: claude-sonnet-4-6        # Sonnet for production / demo runs
+      - key: RESEARCH_PROVIDER
+        value: tavily
+      - key: JWT_EXPIRY_MINUTES
+        value: "60"
+      - key: LLM_API_KEY
+        sync: false                     # Anthropic key — set in dashboard
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: FIRECRAWL_API_KEY
+        sync: false                     # optional (only if RESEARCH_PROVIDER=firecrawl)
+      - key: DATABASE_URL
+        sync: false                     # Neon: postgresql+psycopg://user:pass@host/db?sslmode=require
+      - key: JWT_SECRET
+        sync: false                     # any long random string
+      - key: CORS_ORIGINS
+        sync: false                     # the frontend URL, e.g. https://dossi-frontend.onrender.com
+
+  # --- Frontend: Vite static build -----------------------------------------
+  - type: web
+    name: dossi-frontend
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./dist
+    routes:
+      - type: rewrite              # SPA: every path serves index.html (react-router)
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        sync: false                # the backend URL, e.g. https://dossi-backend.onrender.com
