@@ -5,6 +5,12 @@ sqlmodel==0.0.22
 psycopg[binary]==3.2.3
 python-dotenv==1.0.1
 
+# Phase 2 — auth (JWT)
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
+pyjwt==2.10.1
+email-validator==2.2.0
+
 # Phase 1 — LangGraph research workflow
 langgraph==0.2.60
 langchain==0.3.13
