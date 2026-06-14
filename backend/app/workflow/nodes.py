@@ -10,7 +10,10 @@ from app.workflow.llm import get_llm
 from app.workflow.schema import BusinessReport, coerce_str_list
 
 # Per-source content fed to the LLM is truncated to bound tokens/cost.
-_MAX_CONTENT_CHARS = 2000
+_MAX_CONTENT_CHARS = 1200
+# Cap how many sources are fed to a single LLM call (keeps prompts well under
+# tight input-token rate limits).
+_MAX_SOURCES_IN_PROMPT = 10
 
 
 # --- Structured-output helper models (keep node outputs reliable) -----------
@@ -51,7 +54,7 @@ def _format_sources(sources: list[dict]) -> str:
     if not sources:
         return "(no sources were gathered)"
     blocks = []
-    for i, src in enumerate(sources, 1):
+    for i, src in enumerate(sources[:_MAX_SOURCES_IN_PROMPT], 1):
         content = (src.get("content") or "")[:_MAX_CONTENT_CHARS]
         blocks.append(
             f"[{i}] {src.get('title')} ({src.get('url')})\n{content}"
