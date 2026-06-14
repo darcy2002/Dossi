@@ -5,7 +5,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { api, tokenStore } from "./api";
+import { ApiError, api, tokenStore } from "./api";
 import type { AuthResponse, User } from "./types";
 
 interface AuthContextValue {
@@ -35,7 +35,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }
 
-  // Hydrate the user from a stored token on boot; clear if invalid.
+  // Hydrate the user from a stored token on boot. Only a 401 means the token
+  // is actually invalid; transient failures (backend cold start, network blip,
+  // 5xx) must NOT log the user out — keep the token and retry.
   useEffect(() => {
     let active = true;
     const t = tokenStore.get();
@@ -43,10 +45,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setReady(true);
       return;
     }
-    api<User>("/auth/me")
-      .then((u) => active && setUser(u))
-      .catch(() => active && logout())
-      .finally(() => active && setReady(true));
+
+    async function hydrate() {
+      for (let attempt = 0; active; attempt++) {
+        try {
+          const u = await api<User>("/auth/me");
+          if (active) {
+            setUser(u);
+            setReady(true);
+          }
+          return;
+        } catch (err) {
+          if (err instanceof ApiError && err.status === 401) {
+            if (active) {
+              logout();
+              setReady(true);
+            }
+            return;
+          }
+          // Transient error: keep the token. Back off and retry; after a few
+          // attempts, enter the app anyway (token is still valid).
+          if (attempt >= 3) {
+            if (active) setReady(true);
+            return;
+          }
+          await new Promise((r) => setTimeout(r, Math.min(1000 * 2 ** attempt, 8000)));
+        }
+      }
+    }
+
+    hydrate();
     return () => {
       active = false;
     };
