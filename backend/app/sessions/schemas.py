@@ -48,3 +48,13 @@ class SessionStatus(_ORMModel):
     id: int
     status: str
     current_step: Optional[str] = None
+
+
+class ChatRequest(BaseModel):
+    message: str
+
+
+class MessageOut(_ORMModel):
+    role: str
+    content: str
+    created_at: datetime

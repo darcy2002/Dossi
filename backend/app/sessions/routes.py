@@ -3,15 +3,19 @@
 import threading
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from sqlmodel import Session as DBSession
 from sqlmodel import select
 
 from app.auth.deps import get_current_user
 from app.db import get_session
 from app.logging_config import logger
-from app.models import Session as SessionModel
+from app.models import Message, Session as SessionModel
 from app.models import User
+from app.sessions.chat import build_messages, stream_answer
 from app.sessions.schemas import (
+    ChatRequest,
+    MessageOut,
     SessionCreate,
     SessionCreated,
     SessionDetail,
@@ -107,3 +111,49 @@ def retry_session(
     logger.info("session retry id=%s user_id=%s from_status=%s", row.id, user.id, row.status)
     _launch(row.id, row.company_name, row.website, row.objective, resume=True)
     return SessionCreated(id=row.id, status="running")
+
+
+@router.get("/{session_id}/messages", response_model=list[MessageOut])
+def list_messages(
+    session_id: int,
+    user: User = Depends(get_current_user),
+    db: DBSession = Depends(get_session),
+):
+    _get_owned(session_id, user, db)
+    return db.exec(
+        select(Message)
+        .where(Message.session_id == session_id)
+        .order_by(Message.created_at.asc())
+    ).all()
+
+
+@router.post("/{session_id}/chat")
+def chat(
+    session_id: int,
+    body: ChatRequest,
+    user: User = Depends(get_current_user),
+    db: DBSession = Depends(get_session),
+):
+    row = _get_owned(session_id, user, db)
+    if row.status not in ("complete", "needs_review"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Session has no report to chat about yet",
+        )
+
+    db.add(Message(session_id=session_id, role="user", content=body.message))
+    db.commit()
+    logger.info("chat message session_id=%s user_id=%s", session_id, user.id)
+
+    history = db.exec(
+        select(Message)
+        .where(Message.session_id == session_id)
+        .order_by(Message.created_at.asc())
+    ).all()
+    messages = build_messages(row, history)
+
+    return StreamingResponse(
+        stream_answer(session_id, messages),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
