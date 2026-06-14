@@ -10,7 +10,9 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    # Firecrawl
+    # Research provider — "tavily" or "firecrawl" (swappable in one place)
+    research_provider: str = "tavily"
+    tavily_api_key: str = ""
     firecrawl_api_key: str = ""
 
     # LLM (provider/model are plain swappable strings)

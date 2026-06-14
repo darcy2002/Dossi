@@ -5,7 +5,7 @@ returns the fields it updates. All grounding is in the gathered sources only.
 from pydantic import BaseModel, Field, field_validator
 
 from app.logging_config import logger
-from app.workflow import firecrawl
+from app.workflow.research.factory import get_provider
 from app.workflow.llm import get_llm
 from app.workflow.schema import BusinessReport, coerce_str_list
 
@@ -82,6 +82,7 @@ def planner(state: dict) -> dict:
 
 def research(state: dict) -> dict:
     logger.info("[research] gathering sources")
+    provider = get_provider()
     sources = list(state.get("sources") or [])
     errors = list(state.get("errors") or [])
     seen_urls = {s.get("url") for s in sources}
@@ -92,32 +93,32 @@ def research(state: dict) -> dict:
                 seen_urls.add(item["url"])
                 sources.append(item)
 
+    def _search(query: str):
+        items = provider.search(query, max_results=3)
+        if items:
+            _add([
+                {"url": i.url, "title": i.title, "content": i.content, "source_type": "search"}
+                for i in items
+            ])
+        else:
+            errors.append(f"search returned nothing: {query}")
+
     # The company's own site.
     website = state.get("website")
     if website:
-        scraped = firecrawl.scrape(website)
-        if scraped:
-            _add([scraped])
+        r = provider.scrape(website)
+        if r.success:
+            _add([{"url": r.url, "title": r.title, "content": r.content, "source_type": "site"}])
         else:
             errors.append(f"scrape failed: {website}")
 
     # Each plan item -> web search.
     for item in state.get("plan") or []:
-        query = f"{state.get('company_name')} {item}"
-        results = firecrawl.search(query, limit=3)
-        if results:
-            _add(results)
-        else:
-            errors.append(f"search returned nothing: {query}")
+        _search(f"{state.get('company_name')} {item}")
 
     # On a retry, also chase the gaps the quality check flagged.
     for gap in (state.get("quality") or {}).get("gaps", []):
-        query = f"{state.get('company_name')} {gap}"
-        results = firecrawl.search(query, limit=3)
-        if results:
-            _add(results)
-        else:
-            errors.append(f"search returned nothing: {query}")
+        _search(f"{state.get('company_name')} {gap}")
 
     logger.info("[research] %d sources, %d errors", len(sources), len(errors))
     return {"current_step": "research", "sources": sources, "errors": errors}
