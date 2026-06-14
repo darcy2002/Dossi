@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Send } from "lucide-react";
+import { marked } from "marked";
+import DOMPurify from "dompurify";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Card, Skeleton, Spinner } from "@/components/ui/misc";
@@ -8,16 +10,41 @@ import { ErrorState } from "@/components/states";
 import { useMessages } from "@/lib/queries";
 import { chatStreamResponse } from "@/lib/api";
 
+// Assistant replies are markdown; sanitize before injecting as HTML.
+function MarkdownContent({ content }: { content: string }) {
+  const html = DOMPurify.sanitize(marked.parse(content, { gfm: true, breaks: true }) as string);
+  return <div className="chat-md" dangerouslySetInnerHTML={{ __html: html }} />;
+}
+
 function Bubble({ role, content }: { role: string; content: string }) {
   const isUser = role === "user";
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div
-        className={`max-w-[85%] whitespace-pre-wrap rounded-lg px-3 py-2 text-sm leading-relaxed ${
-          isUser ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"
+        className={`max-w-[85%] rounded-lg px-3 py-2 text-sm leading-relaxed ${
+          isUser
+            ? "whitespace-pre-wrap bg-primary text-primary-foreground"
+            : "bg-muted text-foreground"
         }`}
       >
-        {content || <span className="opacity-60">…</span>}
+        {isUser ? content : <MarkdownContent content={content} />}
+      </div>
+    </div>
+  );
+}
+
+// Shown while the assistant reply is generating, in place of live partial text.
+function TypingBubble() {
+  return (
+    <div className="flex justify-start">
+      <div className="flex items-center gap-1 rounded-lg bg-muted px-3 py-3">
+        {[0, 1, 2].map((i) => (
+          <span
+            key={i}
+            className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground/70"
+            style={{ animationDelay: `${i * 0.15}s` }}
+          />
+        ))}
       </div>
     </div>
   );
@@ -28,14 +55,13 @@ export function ChatPanel({ sessionId }: { sessionId: number }) {
   const { data: messages, isLoading, isError, refetch } = useMessages(sessionId, true);
   const [input, setInput] = useState("");
   const [pendingUser, setPendingUser] = useState<string | null>(null);
-  const [streaming, setStreaming] = useState<string>("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-  }, [messages, streaming, pendingUser]);
+  }, [messages, busy, pendingUser]);
 
   async function send(e: FormEvent) {
     e.preventDefault();
@@ -44,7 +70,6 @@ export function ChatPanel({ sessionId }: { sessionId: number }) {
     setInput("");
     setError(null);
     setPendingUser(text);
-    setStreaming("");
     setBusy(true);
 
     try {
@@ -52,8 +77,9 @@ export function ChatPanel({ sessionId }: { sessionId: number }) {
       const reader = res.body!.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
-      let acc = "";
 
+      // Drain the stream to detect completion / errors; the final message is
+      // persisted server-side and rendered via the refetch below.
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -67,12 +93,7 @@ export function ChatPanel({ sessionId }: { sessionId: number }) {
           if (payload === "[DONE]") continue;
           try {
             const data = JSON.parse(payload);
-            if (data.delta) {
-              acc += data.delta;
-              setStreaming(acc);
-            } else if (data.error) {
-              setError("The assistant ran into an error.");
-            }
+            if (data.error) setError("The assistant ran into an error.");
           } catch {
             /* ignore partial */
           }
@@ -81,10 +102,11 @@ export function ChatPanel({ sessionId }: { sessionId: number }) {
     } catch {
       setError("Couldn't reach the assistant. Please try again.");
     } finally {
+      // Refetch first so the persisted reply is in cache before we drop the
+      // typing bubble — avoids a flicker gap between the two.
+      await qc.invalidateQueries({ queryKey: ["messages", sessionId] });
       setBusy(false);
       setPendingUser(null);
-      setStreaming("");
-      await qc.invalidateQueries({ queryKey: ["messages", sessionId] });
     }
   }
 
@@ -107,7 +129,7 @@ export function ChatPanel({ sessionId }: { sessionId: number }) {
           <Bubble key={i} role={m.role} content={m.content} />
         ))}
         {pendingUser && <Bubble role="user" content={pendingUser} />}
-        {busy && <Bubble role="assistant" content={streaming} />}
+        {busy && <TypingBubble />}
         {error && <p className="text-center text-sm text-destructive">{error}</p>}
       </div>
 
