@@ -12,11 +12,8 @@ import argparse
 import re
 import uuid
 
-from app.config import settings
 from app.logging_config import configure_logging, logger
-from app.workflow.graph import build_graph, make_checkpointer
-
-_STEP_ORDER = ["planner", "research", "analysis", "quality_check", "report_generation"]
+from app.workflow.graph import run_research
 
 
 def _print_report(report: dict) -> None:
@@ -52,30 +49,17 @@ def _print_report(report: dict) -> None:
 
 
 def run(company: str, website: str, objective: str, thread_id: str, strict: bool) -> dict:
-    initial_state = {
-        "company_name": company,
-        "website": website,
-        "objective": objective,
-        "strict": strict,
-        "sources": [],
-        "errors": [],
-        "retry_count": 0,
-    }
-    config = {"configurable": {"thread_id": thread_id}}
+    print(f"\nRunning workflow for {company} ({website})")
+    print(f"Objective: {objective}\n")
 
-    final_state: dict = {}
-    with make_checkpointer(settings.database_url) as checkpointer:
-        graph = build_graph().compile(checkpointer=checkpointer)
-        print(f"\nRunning workflow for {company} ({website})")
-        print(f"Objective: {objective}\n")
-        for chunk in graph.stream(initial_state, config, stream_mode="updates"):
-            for node_name, update in chunk.items():
-                print(f"  -> step complete: {node_name}")
-                final_state.update(update)
-        # Pull the authoritative final state from the checkpoint.
-        snapshot = graph.get_state(config)
-        if snapshot and snapshot.values:
-            final_state = snapshot.values
+    final_state = run_research(
+        thread_id,
+        company,
+        website,
+        objective,
+        strict=strict,
+        on_step=lambda node, _update: print(f"  -> step complete: {node}"),
+    )
 
     _print_report(final_state.get("report") or {})
 

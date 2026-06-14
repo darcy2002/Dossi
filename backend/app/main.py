@@ -9,6 +9,7 @@ from app.auth.routes import router as auth_router
 from app.config import settings
 from app.db import create_db_and_tables
 from app.logging_config import configure_logging, logger
+from app.sessions.routes import router as sessions_router
 
 configure_logging()
 
@@ -41,6 +42,7 @@ async def log_requests(request: Request, call_next):
 
 
 app.include_router(auth_router)
+app.include_router(sessions_router)
 
 
 @app.get("/health")

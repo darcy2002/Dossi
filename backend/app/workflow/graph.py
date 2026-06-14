@@ -6,6 +6,7 @@ checkpointer's `with` block (the savers manage a DB connection lifecycle).
 """
 
 from contextlib import contextmanager
+from typing import Callable, Optional
 
 from langgraph.graph import END, START, StateGraph
 
@@ -70,3 +71,44 @@ def make_checkpointer(database_url: str):
         with PostgresSaver.from_conn_string(conn) as checkpointer:
             checkpointer.setup()
             yield checkpointer
+
+
+def run_research(
+    session_id,
+    company_name: str,
+    website: str,
+    objective: str,
+    strict: bool = False,
+    resume: bool = False,
+    on_step: Optional[Callable[[str, dict], None]] = None,
+) -> dict:
+    """Run the graph for one session, keyed by thread_id=session_id.
+
+    on_step(node_name, update) is called as each node finishes (live progress).
+    resume=True continues a run interrupted mid-graph from its checkpoint;
+    a completed thread is re-run fresh on the same thread_id. Returns final state.
+    """
+    config = {"configurable": {"thread_id": str(session_id)}}
+
+    with make_checkpointer(settings.database_url) as checkpointer:
+        graph = build_graph().compile(checkpointer=checkpointer)
+
+        stream_input = {
+            "company_name": company_name,
+            "website": website,
+            "objective": objective,
+            "strict": strict,
+            "sources": [],
+            "errors": [],
+            "retry_count": 0,
+        }
+        if resume and graph.get_state(config).next:
+            stream_input = None  # resume pending tasks from the checkpoint
+
+        for chunk in graph.stream(stream_input, config, stream_mode="updates"):
+            for node_name, update in chunk.items():
+                if on_step:
+                    on_step(node_name, update)
+
+        snapshot = graph.get_state(config)
+        return snapshot.values if (snapshot and snapshot.values) else {}

@@ -10,7 +10,8 @@ from app.config import settings
 from app import models  # noqa: F401
 
 _connect_args = (
-    {"check_same_thread": False}
+    # timeout: wait out the checkpointer's write lock instead of erroring.
+    {"check_same_thread": False, "timeout": 30}
     if settings.database_url.startswith("sqlite")
     else {}
 )
