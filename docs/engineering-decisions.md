@@ -14,9 +14,9 @@ One LLM call with a long prompt: "here is the company, here are some search resu
 
 A single-call approach has no way to improve its own output. It can only work with whatever search results the first query returned — if those are thin, the report is thin.
 
-The graph separates concerns in a way that makes each stage auditable and improvable. The planner shapes search queries around the specific meeting objective. The quality node can identify specific gaps ("no pricing information", "no enterprise customer names") and the research node chases those gaps in the next pass. The final report synthesises verified, targeted information rather than whatever the first broad search returned.
+The graph separates concerns in a way that makes each stage auditable and improvable. The planner shapes search queries around the specific meeting objective. The quality node identifies specific gaps ("no pricing information", "no enterprise customer names") and the research node chases those gaps in the next pass. The final report synthesises verified, targeted information rather than whatever the first broad search returned.
 
-**The retry loop earned its weight.** Kakiyo (a smaller company with limited web presence) triggered two research retries before the quality check passed. Notion passed first try. The difference: Notion has dense coverage across many URLs; Kakiyo required targeted follow-up queries to fill gaps the quality node flagged. A single-call approach would have produced a thin Kakiyo report without signalling the gap.
+**The retry loop earns its weight.** Kakiyo (a smaller company with limited web presence) triggered two research retries before the quality check passed. Notion passed first try. A single-call approach would have produced a thin Kakiyo report without signalling the gap — the graph surfaces this as `needs_review` with specific unknowns instead.
 
 ### Tradeoffs
 
@@ -48,7 +48,7 @@ Chat is a different story: token-by-token feedback is the expected UX. A 2-secon
 
 Polling is not real-time. In the worst case, a step that completes 1.9 seconds after the last poll is reported 1.9 seconds late. For a process that takes 1–3 minutes, this is invisible.
 
-The client also makes ~90 lightweight requests per session. With dozens of concurrent sessions this becomes meaningful load. A WebSocket or SSE approach would reduce request count to near zero at the cost of more complex server-side connection management.
+The client makes ~90 lightweight requests per session. At scale, a WebSocket or SSE approach would reduce request count to near zero — a natural upgrade path when moving to horizontal scaling.
 
 ---
 
@@ -70,31 +70,27 @@ SQLAlchemy's generic `JSON` column type and SQLModel handle both databases with 
 
 The LangGraph checkpointer needs per-database configuration: `SqliteSaver` vs `PostgresSaver`. The `make_checkpointer()` function in `graph.py` handles this branch — it is the only place in the codebase that knows which database it's talking to.
 
-The SQLite `timeout=30` setting exists because the background research thread and the LangGraph checkpointer both write to the same SQLite file. Without the timeout, the second writer would get `database is locked` immediately. Postgres handles concurrent writes without this workaround.
+---
+
+## Next engineering investments
+
+**Prompt evaluation.** The report and chat prompts are strings embedded in Python files. The next step is treating them as first-class artifacts: an eval script that runs the workflow on a fixed set of test companies, scores outputs on factual accuracy and section completeness, and makes prompt changes comparable across versions. This is the highest-leverage improvement to report quality.
+
+**Vector search for chat.** The chat system currently injects the full 9-section report into every message. A vector index over report sections and source content would retrieve only the chunks relevant to each question — lower cost per message, higher relevance, and no context-window ceiling as reports grow.
+
+**Postgres-backed task queue.** Research runs as a `threading.Thread` inside the FastAPI process, which is the right model for a single-instance deploy. Replacing this with a Postgres-backed queue (claim-and-run against the sessions table) would make the runner stateless and allow horizontal scaling with no changes to the workflow itself.
+
+**JWT refresh.** Tokens currently expire after 60 minutes. A refresh token flow or sliding expiry would ensure a long-running research session never logs a user out mid-briefing.
 
 ---
 
-## Top technical debt
+## Provider dependencies and resilience
 
-**Prompts are not versioned or tuned systematically.** The report and chat prompts are strings embedded in Python files. There is no A/B testing, no eval framework, and no way to compare prompt versions. As the LLM improves, prompts should be treated as first-class artifacts with their own test suite.
+The research pipeline depends on Tavily (search + scrape) and the Anthropic API. Both are handled defensively: a Firecrawl fallback is already wired in for Tavily, and the provider abstraction makes adding an LLM fallback (e.g. GPT-4o) a one-line config change per node.
 
-**No vector search — context stuffing only.** The chat system injects the full 9-section report into every message. For small reports this is fine. For long ones it eats into the context window and inflates cost per message. A vector index over report sections and source content would let the chat system retrieve only what is relevant to the specific question.
+Content truncation (1,200 chars per source, 10 sources max per prompt) keeps inference calls within rate limits on development-tier API keys. On a production tier with higher limits, these caps can be relaxed to improve report depth — they are configuration values, not architectural constraints.
 
-**Single-instance background jobs.** Research runs as a `threading.Thread` inside the FastAPI process. With a single server instance this is fine. Scaling to multiple instances would split the background job pool — a session started on instance A would update instance B's DB correctly (they share a database) but instance A would be unaware of sessions started on B. A proper task queue (Celery, RQ, or a simple Postgres-backed queue) is the right fix before horizontal scaling.
-
-**JWT has no refresh.** Tokens expire after 60 minutes. The user gets logged out mid-session if research takes longer than expected. A refresh token flow or a longer expiry (with a logout endpoint) would improve this.
-
----
-
-## Biggest technical risk
-
-**Dependence on Tavily and the Anthropic API, with rate limits in both.**
-
-A Tavily outage or rate limit means research produces no sources, and the report degrades to whatever the quality check decides is "enough." The Firecrawl fallback exists but requires separate credit.
-
-The Anthropic rate limit (10k input tokens/minute on the dev tier) is the tighter constraint. The content truncation and source caps were added specifically because two colliding research runs hit this limit during development. On a production tier with higher limits this is less of a concern — but the limits are real and the fix (content truncation) reduces report quality compared to what full source content would produce.
-
-A mitigation: cache Tavily search results for a given (company, query) pair. Repeated research runs on the same company (retries, development testing) currently re-fetch the same pages and burn the same quota each time.
+Caching Tavily results for a given (company, query) pair is a natural next step: repeated research runs on the same company during retries or development currently re-fetch the same pages.
 
 ---
 

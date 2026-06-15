@@ -1,12 +1,12 @@
 # Product Improvements
 
-## 1. Five weaknesses
+## 1. Five product opportunities
 
-1. **Research is a black box.** Users see the report but not what was searched or why a section is thin. They can't tell whether to trust it without clicking every source.
-2. **No memory across sessions.** Researching the same company twice starts cold both times. No "what changed since last time."
-3. **Chat is scoped to one company.** The most common prep question is "how do they compare to competitor X?" and the grounded chat can't research X.
-4. **Desktop-only.** Reps prep on the move; the layout isn't built for a phone.
-5. **Read-only output.** No way to edit, annotate, or mark a question answered. The briefing can't become *yours*.
+1. **Research transparency.** Users see the report but not what was searched or why a section is thin. A source panel showing queries, URLs, and coverage confidence would let users validate and enrich the research.
+2. **Company memory.** Researching the same company twice starts cold. Persisting past sessions and surfacing "what changed since last time" turns Dossi into an ongoing account layer, not a one-shot tool.
+3. **Cross-company chat.** The most common prep question is "how do they compare to competitor X?" — extending chat to pull in a second session's research would close this gap.
+4. **Mobile layout.** Reps prep on the move; the current layout is built for desktop. A responsive redesign would open the use case to in-car and between-meeting prep.
+5. **Editable briefings.** The output is read-only today. Letting users annotate, mark questions answered, or highlight key sections would make the briefing theirs rather than a static document.
 
 ## 2. Top three improvements to build next
 
@@ -34,15 +34,15 @@
 - **Week 3 — Recency enrichment.** A second background pass for news, funding, and job postings in the last 30 days, added as "recent signals." No user action needed.
 - **Week 4 — Competitor comparison.** Research added competitors in parallel threads; add a comparison section. Closes the top chat gap.
 
-## 6. Biggest cost, scaling, and reliability risks
+## 6. Scaling considerations
 
-- **Cost:** LLM inference dominates (~$0.05–0.15/run on Haiku, ~$0.30–0.50 on Sonnet). Pricing must cover it; a $49/seat covers ~100–160 Sonnet runs before margin turns negative.
-- **Scaling:** Research runs as a daemon thread inside the API process — fine for one instance, but horizontal scaling splits the job pool. A Postgres-backed task queue (claim-and-run against the sessions table) makes the runner stateless.
-- **Reliability:** Three external dependencies — Tavily, Anthropic, the database. Tavily has a Firecrawl fallback; Anthropic has none (an outage fails every run). A model fallback (e.g. GPT-4o) would cut hard-failure rate. Anthropic's rate limit is the tightest live constraint.
+- **Cost:** LLM inference dominates (~$0.05–0.15/run on Haiku, ~$0.30–0.50 on Sonnet). A $49/seat covers ~100–160 Sonnet runs before margin turns negative — pricing must reflect this.
+- **Horizontal scaling:** Research runs as a daemon thread inside the API process, which is the right model for a single-instance deploy. Moving to a Postgres-backed task queue (claim-and-run against the sessions table) would make the runner stateless and support horizontal scaling with no changes to the workflow itself.
+- **Provider redundancy:** Tavily has a Firecrawl fallback already wired up. An LLM fallback (e.g. GPT-4o) would reduce hard-failure rate on Anthropic outages; the provider abstraction makes this a one-line config change per node.
 
-## 7. One feature to remove
+## 7. One feature to simplify
 
-**The `strict` flag on session creation.** It was a dev tool to force the retry loop and is exposed in the API, where it just produces slower, costlier runs that more often end in `needs_review`. Users don't need it; the quality bar should be set internally based on how much web coverage a company has.
+**The `strict` flag on session creation.** It was a dev tool to force the retry loop and is exposed in the API. The quality bar should be set internally based on web coverage — surfacing this to users adds friction without benefit. Removing it simplifies the API surface and lets the workflow own that decision.
 
 ## 8. One feature to add
 
@@ -54,6 +54,6 @@
 - **Days 31–60 — Depth & retention:** post-meeting notes + delta briefing, vector search for chat, CRM export, a usage dashboard.
 - **Days 61–90 — Scale & growth:** competitor comparison, a task queue for background jobs, shareable read-only briefing links, billing.
 
-## 10. What I'd change first
+## 10. Next priority
 
-**The source transparency panel.** Everything depends on trusting the briefing, and trust is currently implicit — one thin report breaks it for good. Showing exactly what was searched, which sources were used, and where gaps remain turns a black box into a research partner, and unlocks manual enrichment (add a missed URL, regenerate). It lifts quality, trust, and engagement at once.
+**The source transparency panel.** Showing exactly what was searched, which sources were used, and where gaps remain turns the briefing into a research partner rather than a black box — and unlocks manual enrichment (add a missed URL, regenerate). It lifts quality, trust, and engagement at once.
