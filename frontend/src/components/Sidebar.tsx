@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
-import { Clock, PanelLeftClose, PanelLeft, Plus, Settings } from "lucide-react";
+import { Clock, PanelLeftClose, PanelLeft, Plus } from "lucide-react";
 import { Skeleton } from "@/components/ui/misc";
 import { ErrorState } from "@/components/states";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -116,17 +116,10 @@ export function Sidebar({
         </button>
       </nav>
 
-      {/* Bottom: theme toggle above settings, then user */}
+      {/* Bottom: theme toggle + user */}
       <div className="space-y-1 border-t border-border p-3">
         <div className={cn("flex items-center", collapsed ? "flex-col gap-1" : "gap-1")}>
           <ThemeToggle />
-          <button
-            className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-            aria-label="Settings"
-            title="Settings"
-          >
-            <Settings className="h-4 w-4" />
-          </button>
         </div>
         <UserMenu collapsed={collapsed} />
       </div>
