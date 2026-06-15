@@ -1,6 +1,7 @@
 """FastAPI application: startup, CORS, logging, and a health route."""
 
 from contextlib import asynccontextmanager
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,7 +19,9 @@ configure_logging()
 async def lifespan(app: FastAPI):
     logger.info("Starting up dossi backend")
     create_db_and_tables()
-    logger.info("Database tables ready (DATABASE_URL=%s)", settings.database_url)
+    # Log only scheme + host — never the DSN, which carries the DB password.
+    _db = urlsplit(settings.database_url)
+    logger.info("Database tables ready (db=%s://%s)", _db.scheme, _db.hostname or "local")
     yield
     logger.info("Shutting down dossi backend")
 
@@ -29,8 +32,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 

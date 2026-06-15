@@ -1,5 +1,7 @@
 """Tavily research provider — search + extract at basic depth (cheap on free tier)."""
 
+import threading
+
 from app.config import settings
 from app.logging_config import logger
 from app.workflow.research.base import ResearchProvider, ScrapeResult, SearchResultItem
@@ -8,13 +10,17 @@ from app.workflow.research.base import ResearchProvider, ScrapeResult, SearchRes
 class TavilyProvider(ResearchProvider):
     def __init__(self):
         self._client = None
+        self._client_lock = threading.Lock()
 
     def _get_client(self):
-        if self._client is None:
-            from tavily import TavilyClient
+        # A single provider instance is shared across concurrent runs; lock the
+        # lazy init so the client is built exactly once.
+        with self._client_lock:
+            if self._client is None:
+                from tavily import TavilyClient
 
-            self._client = TavilyClient(api_key=settings.tavily_api_key)
-        return self._client
+                self._client = TavilyClient(api_key=settings.tavily_api_key)
+            return self._client
 
     def scrape(self, url: str) -> ScrapeResult:
         try:

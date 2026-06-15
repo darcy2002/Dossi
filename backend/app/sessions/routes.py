@@ -4,6 +4,7 @@ import threading
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
+from sqlalchemy import update
 from sqlmodel import Session as DBSession
 from sqlmodel import select
 
@@ -103,12 +104,25 @@ def retry_session(
     db: DBSession = Depends(get_session),
 ):
     row = _get_owned(session_id, user, db)
-    if row.status not in ("failed", "needs_review"):
+    from_status = row.status
+    # Atomically claim the row: flip a retryable status to "running" in one
+    # statement. Concurrent double-clicks race on this UPDATE, and only the one
+    # that actually changes a row (rowcount == 1) goes on to launch the thread.
+    result = db.execute(
+        update(SessionModel)
+        .where(
+            SessionModel.id == session_id,
+            SessionModel.status.in_(("failed", "needs_review")),
+        )
+        .values(status="running")
+    )
+    db.commit()
+    if result.rowcount == 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only failed or needs_review sessions can be retried",
         )
-    logger.info("session retry id=%s user_id=%s from_status=%s", row.id, user.id, row.status)
+    logger.info("session retry id=%s user_id=%s from_status=%s", row.id, user.id, from_status)
     _launch(row.id, row.company_name, row.website, row.objective, resume=True)
     return SessionCreated(id=row.id, status="running")
 

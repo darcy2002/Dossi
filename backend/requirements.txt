@@ -7,6 +7,8 @@ python-dotenv==1.0.1
 
 # Phase 2 — auth (JWT)
 passlib[bcrypt]==1.7.4
+# Keep bcrypt < 4.1: passlib 1.7.4 reads bcrypt.__about__.__version__, which was
+# removed in 4.1+, producing a noisy "error reading bcrypt version" traceback.
 bcrypt==4.0.1
 pyjwt==2.10.1
 email-validator==2.2.0

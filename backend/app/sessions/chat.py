@@ -101,6 +101,7 @@ def _strip_dashes(text: str) -> str:
 def stream_answer(session_id: int, messages: list[BaseMessage]):
     """Yield SSE token events; persist the full assistant message at the end."""
     parts: list[str] = []
+    errored = False
     try:
         for chunk in get_llm().stream(messages):
             token = chunk.content if isinstance(chunk.content, str) else ""
@@ -110,11 +111,15 @@ def stream_answer(session_id: int, messages: list[BaseMessage]):
                 yield f"data: {json.dumps({'delta': token})}\n\n"
         yield "data: [DONE]\n\n"
     except Exception as exc:  # noqa: BLE001 — surface a clean SSE error, don't crash
+        errored = True
         logger.exception("chat stream failed session_id=%s", session_id)
         yield f"data: {json.dumps({'error': str(exc)})}\n\n"
     finally:
+        # Only persist a cleanly-completed reply. A truncated/errored stream
+        # must not be saved as a normal turn — it would feed back as grounding
+        # context on the next message.
         text = "".join(parts).strip()
-        if text:
+        if text and not errored:
             with DBSession(engine) as db:
                 db.add(Message(session_id=session_id, role="assistant", content=text))
                 db.commit()

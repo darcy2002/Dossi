@@ -1,5 +1,7 @@
 """Firecrawl research provider — plain scrape and search (cheapest credits)."""
 
+import threading
+
 from app.config import settings
 from app.logging_config import logger
 from app.workflow.research.base import ResearchProvider, ScrapeResult, SearchResultItem
@@ -17,17 +19,20 @@ def _field(obj, name, default=None):
 class FirecrawlProvider(ResearchProvider):
     def __init__(self):
         self._client = None
+        self._client_lock = threading.Lock()
 
     def _get_client(self):
-        if self._client is None:
-            import warnings
+        # Shared across concurrent runs; lock the lazy init to build once.
+        with self._client_lock:
+            if self._client is None:
+                import warnings
 
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", UserWarning)
-                from firecrawl import Firecrawl
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", UserWarning)
+                    from firecrawl import Firecrawl
 
-            self._client = Firecrawl(api_key=settings.firecrawl_api_key)
-        return self._client
+                self._client = Firecrawl(api_key=settings.firecrawl_api_key)
+            return self._client
 
     def scrape(self, url: str) -> ScrapeResult:
         try:

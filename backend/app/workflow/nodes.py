@@ -5,6 +5,7 @@ returns the fields it updates. All grounding is in the gathered sources only.
 from pydantic import BaseModel, Field, field_validator
 
 from app.logging_config import logger
+from app.url_safety import is_safe_public_url
 from app.workflow.research.factory import get_provider
 from app.workflow.llm import get_llm
 from app.workflow.schema import BusinessReport, coerce_str_list
@@ -119,20 +120,29 @@ def research(state: dict) -> dict:
         else:
             errors.append(f"search returned nothing: {query}")
 
-    # The company's own site.
-    website = state.get("website")
-    if website:
-        r = provider.scrape(website)
-        if r.success:
-            _add([{"url": r.url, "title": r.title, "content": r.content, "source_type": "site"}])
-        else:
-            errors.append(f"scrape failed: {website}")
+    # On a retry the site scrape and plan-item searches were already done last
+    # pass; re-running them just re-fetches URLs we dedup away. Only the new
+    # gap searches add material, so skip the first-pass work on retries.
+    is_retry = int(state.get("retry_count") or 0) > 0
 
-    # Each plan item -> web search.
-    for item in state.get("plan") or []:
-        _search(f"{state.get('company_name')} {item}")
+    if not is_retry:
+        # The company's own site.
+        website = state.get("website")
+        if website and not is_safe_public_url(website):
+            # Don't hand an internal/non-web URL to the scraper (SSRF guard).
+            errors.append("skipped unsafe website URL")
+        elif website:
+            r = provider.scrape(website)
+            if r.success:
+                _add([{"url": r.url, "title": r.title, "content": r.content, "source_type": "site"}])
+            else:
+                errors.append("scrape failed for the company website")
 
-    # On a retry, also chase the gaps the quality check flagged.
+        # Each plan item -> web search.
+        for item in state.get("plan") or []:
+            _search(f"{state.get('company_name')} {item}")
+
+    # The gaps the quality check flagged (only present on a retry).
     for gap in (state.get("quality") or {}).get("gaps", []):
         _search(f"{state.get('company_name')} {gap}")
 
@@ -179,7 +189,10 @@ def quality_check(state: dict) -> dict:
         f"SOURCES:\n{_format_sources(state.get('sources') or [])}"
     )
     result: QualityModel = llm.invoke(prompt)
-    verdict = "retry" if result.verdict.strip().lower() == "retry" else "pass"
+    # Substring match: models often answer "retry: <reason>" or "needs retry"
+    # rather than the bare word, and an exact-equality check silently dropped
+    # those to "pass", disabling the retry loop.
+    verdict = "retry" if "retry" in result.verdict.strip().lower() else "pass"
     retry_count = int(state.get("retry_count") or 0) + 1
     logger.info(
         "[quality_check] verdict=%s gaps=%d retry_count=%d",

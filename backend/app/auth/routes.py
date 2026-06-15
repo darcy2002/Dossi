@@ -24,7 +24,7 @@ def signup(body: SignupRequest, session: Session = Depends(get_session)):
     session.commit()
     session.refresh(user)
 
-    logger.info("signup user_id=%s email=%s", user.id, user.email)
+    logger.info("signup user_id=%s", user.id)
     token = create_access_token(user.id)
     return TokenResponse(access_token=token, user=UserOut(id=user.id, email=user.email))
 
@@ -35,7 +35,7 @@ def login(body: LoginRequest, session: Session = Depends(get_session)):
     if user is None or not verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
-    logger.info("login user_id=%s email=%s", user.id, user.email)
+    logger.info("login user_id=%s", user.id)
     token = create_access_token(user.id)
     return TokenResponse(access_token=token, user=UserOut(id=user.id, email=user.email))
 
