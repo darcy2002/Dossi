@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/Input";
 import { Spinner } from "@/components/ui/misc";
 import { useCreateSession } from "@/lib/queries";
 import { ApiError } from "@/lib/api";
+import { useToast } from "@/lib/toast";
 
 const SUGGESTIONS = [
   "Prep for a sales meeting with their GTM team",
@@ -16,6 +17,7 @@ const SUGGESTIONS = [
 
 export function Home() {
   const navigate = useNavigate();
+  const toast = useToast();
   const create = useCreateSession();
   const [objective, setObjective] = useState("");
   const [company, setCompany] = useState("");
@@ -32,12 +34,16 @@ export function Home() {
     if (!company.trim() || !website.trim()) return;
     create.mutate(
       { company_name: company, website, objective },
-      { onSuccess: (res) => navigate(`/app/sessions/${res.id}`) }
+      {
+        onSuccess: (res) => {
+          toast("Research started.", "success");
+          navigate(`/app/sessions/${res.id}`);
+        },
+        onError: (err) =>
+          toast(err instanceof ApiError ? err.message : "Couldn't start research.", "error"),
+      }
     );
   }
-
-  const error =
-    create.error instanceof ApiError ? create.error.message : create.error ? "Couldn't start research." : null;
 
   return (
     <div className="mx-auto flex min-h-full max-w-2xl flex-col items-center justify-center px-6 py-10">
@@ -110,7 +116,6 @@ export function Home() {
               : "Add the company name and website to begin."}
           </p>
         )}
-        {error && <p className="text-center text-sm text-destructive">{error}</p>}
       </form>
     </div>
   );

@@ -16,10 +16,11 @@ export function useSessions() {
   });
 }
 
-export function useSession(id: number) {
+export function useSession(id: number, enabled = true) {
   return useQuery({
     queryKey: ["session", id],
     queryFn: () => api<SessionDetail>(`/sessions/${id}`),
+    enabled,
   });
 }
 

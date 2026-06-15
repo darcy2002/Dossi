@@ -9,10 +9,29 @@ import { Card, Skeleton, Spinner } from "@/components/ui/misc";
 import { ErrorState } from "@/components/states";
 import { useMessages } from "@/lib/queries";
 import { chatStreamResponse } from "@/lib/api";
+import { useToast } from "@/lib/toast";
+
+// Force external links to open safely; registered once at module scope.
+DOMPurify.addHook("afterSanitizeAttributes", (node) => {
+  if (node.tagName === "A") {
+    node.setAttribute("target", "_blank");
+    node.setAttribute("rel", "noopener noreferrer");
+  }
+});
+
+// Tags/attrs the assistant is allowed to emit. Anything else is stripped.
+const ALLOWED_TAGS = [
+  "p", "br", "strong", "em", "code", "pre", "ul", "ol", "li",
+  "a", "blockquote", "h1", "h2", "h3", "hr",
+];
+const ALLOWED_ATTR = ["href", "title", "target", "rel"];
 
 // Assistant replies are markdown; sanitize before injecting as HTML.
 function MarkdownContent({ content }: { content: string }) {
-  const html = DOMPurify.sanitize(marked.parse(content, { gfm: true, breaks: true }) as string);
+  // async:false guarantees a string (no unsafe cast); strict allowlist limits
+  // the blast radius if a token store is ever exposed to injected HTML.
+  const raw = marked.parse(content, { async: false, gfm: true, breaks: true });
+  const html = DOMPurify.sanitize(raw, { ALLOWED_TAGS, ALLOWED_ATTR });
   return <div className="chat-md" dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
@@ -52,28 +71,37 @@ function TypingBubble() {
 
 export function ChatPanel({ sessionId }: { sessionId: number }) {
   const qc = useQueryClient();
+  const toast = useToast();
   const { data: messages, isLoading, isError, refetch } = useMessages(sessionId, true);
   const [input, setInput] = useState("");
   const [pendingUser, setPendingUser] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages, busy, pendingUser]);
+
+  // Abort an in-flight stream when the panel unmounts (navigation mid-reply),
+  // so the read loop stops and we never call setState on an unmounted component.
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   async function send(e: FormEvent) {
     e.preventDefault();
     const text = input.trim();
     if (!text || busy) return;
     setInput("");
-    setError(null);
     setPendingUser(text);
     setBusy(true);
 
+    const controller = new AbortController();
+    abortRef.current = controller;
+    let failed = false;
+    let gotDone = false;
+
     try {
-      const res = await chatStreamResponse(sessionId, text);
+      const res = await chatStreamResponse(sessionId, text, controller.signal);
       const reader = res.body!.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
@@ -90,23 +118,42 @@ export function ChatPanel({ sessionId }: { sessionId: number }) {
           const line = ev.trim();
           if (!line.startsWith("data:")) continue;
           const payload = line.slice(5).trim();
-          if (payload === "[DONE]") continue;
+          if (payload === "[DONE]") {
+            gotDone = true;
+            continue;
+          }
           try {
             const data = JSON.parse(payload);
-            if (data.error) setError("The assistant ran into an error.");
+            // Accept any of the shapes the backend (or a proxy) might use.
+            const errMsg = data.error ?? data.detail ?? data.message;
+            if (errMsg) {
+              failed = true;
+              toast("The assistant ran into an error.", "error");
+            }
           } catch {
-            /* ignore partial */
+            // A non-JSON data line is unexpected — treat it as a failure rather
+            // than silently dropping it, so the user isn't left with nothing.
+            failed = true;
+            toast("The assistant ran into an error.", "error");
           }
         }
       }
+      // Stream closed without a terminal [DONE] and without an error event:
+      // the reply is incomplete — tell the user instead of showing nothing.
+      if (!gotDone && !failed) {
+        toast("The assistant's response was incomplete. Please try again.", "error");
+      }
     } catch {
-      setError("Couldn't reach the assistant. Please try again.");
+      if (controller.signal.aborted) return; // unmounted/navigated away — leave state alone
+      toast("Couldn't reach the assistant. Please try again.", "error");
     } finally {
-      // Refetch first so the persisted reply is in cache before we drop the
-      // typing bubble — avoids a flicker gap between the two.
-      await qc.invalidateQueries({ queryKey: ["messages", sessionId] });
-      setBusy(false);
-      setPendingUser(null);
+      if (!controller.signal.aborted) {
+        // Refetch first so the persisted reply is in cache before we drop the
+        // typing bubble — avoids a flicker gap between the two.
+        await qc.invalidateQueries({ queryKey: ["messages", sessionId] });
+        setBusy(false);
+        setPendingUser(null);
+      }
     }
   }
 
@@ -125,12 +172,11 @@ export function ChatPanel({ sessionId }: { sessionId: number }) {
             No questions yet. Ask anything about {`the company`}.
           </p>
         )}
-        {messages?.map((m, i) => (
-          <Bubble key={i} role={m.role} content={m.content} />
+        {messages?.map((m) => (
+          <Bubble key={m.id} role={m.role} content={m.content} />
         ))}
         {pendingUser && <Bubble role="user" content={pendingUser} />}
         {busy && <TypingBubble />}
-        {error && <p className="text-center text-sm text-destructive">{error}</p>}
       </div>
 
       <form onSubmit={send} className="flex items-center gap-2 border-t border-border p-3">

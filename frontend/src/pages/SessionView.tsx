@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Navigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, RefreshCw, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/Button";
@@ -10,6 +10,7 @@ import { ErrorState } from "@/components/states";
 import { ReportView } from "@/components/ReportView";
 import { ChatPanel } from "@/components/ChatPanel";
 import { useRetrySession, useSession, useSessionStatus } from "@/lib/queries";
+import { useToast } from "@/lib/toast";
 import { TERMINAL_STATUSES } from "@/lib/types";
 
 const STEP_ORDER = ["planner", "research", "analysis", "quality_check", "report_generation"];
@@ -17,11 +18,20 @@ const STEP_ORDER = ["planner", "research", "analysis", "quality_check", "report_
 export function SessionView() {
   const { id: idParam } = useParams();
   const id = Number(idParam);
+  const validId = Number.isInteger(id) && id > 0;
   const qc = useQueryClient();
 
-  const detail = useSession(id);
-  const status = useSessionStatus(id, true);
+  const toast = useToast();
+  const detail = useSession(id, validId);
+  const status = useSessionStatus(id, validId);
   const retry = useRetrySession(id);
+
+  function handleRetry() {
+    retry.mutate(undefined, {
+      onSuccess: () => toast("Retrying research…", "success"),
+      onError: () => toast("Couldn't start the retry. Please try again.", "error"),
+    });
+  }
 
   const liveStatus = status.data?.status ?? detail.data?.status;
   const currentStep = status.data?.current_step ?? detail.data?.current_step ?? null;
@@ -44,6 +54,10 @@ export function SessionView() {
       setRetrying(false);
     }
   }, [liveStatus, id, qc]);
+
+  // Non-numeric/garbage id (e.g. /app/sessions/abc): nothing to load — bounce
+  // back to the app home rather than firing doomed NaN requests in a loop.
+  if (!validId) return <Navigate to="/app" replace />;
 
   if (detail.isLoading && !detail.data) {
     return (
@@ -100,7 +114,7 @@ export function SessionView() {
                   ))}
                 </ul>
               ) : null}
-              <Button className="mt-4 gap-2" disabled={retry.isPending} onClick={() => retry.mutate()}>
+              <Button className="mt-4 gap-2" disabled={retry.isPending} onClick={handleRetry}>
                 {retry.isPending ? <Spinner /> : <RefreshCw className="h-4 w-4" />} Retry
               </Button>
             </div>
@@ -123,7 +137,7 @@ export function SessionView() {
                     </p>
                     <Button
                       variant="outline" size="sm" className="mt-3 gap-2"
-                      disabled={retry.isPending} onClick={() => retry.mutate()}
+                      disabled={retry.isPending} onClick={handleRetry}
                     >
                       {retry.isPending ? <Spinner /> : <RefreshCw className="h-4 w-4" />} Retry research
                     </Button>

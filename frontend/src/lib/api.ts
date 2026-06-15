@@ -1,6 +1,10 @@
 export const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 const TOKEN_KEY = "dossi_token";
 
+// Deliberate tradeoff: the JWT lives in localStorage (frontend and backend are
+// separate origins, so httpOnly cookies would add CSRF surface + cross-origin
+// friction). The XSS mitigation is the strict DOMPurify allowlist applied to all
+// assistant output in ChatPanel — keep that render path locked down.
 export const tokenStore = {
   get: () => localStorage.getItem(TOKEN_KEY),
   set: (t: string) => localStorage.setItem(TOKEN_KEY, t),
@@ -59,12 +63,14 @@ export async function api<T>(
 /** POST /sessions/{id}/chat — returns the raw streaming Response for SSE reading. */
 export async function chatStreamResponse(
   sessionId: number,
-  message: string
+  message: string,
+  signal?: AbortSignal
 ): Promise<Response> {
   const res = await fetch(`${API_URL}/sessions/${sessionId}/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ message }),
+    signal,
   });
   if (res.status === 401) {
     onUnauthorized();

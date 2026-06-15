@@ -61,6 +61,7 @@ export interface SessionStatusResponse {
 }
 
 export interface Message {
+  id: number;
   role: "user" | "assistant";
   content: string;
   created_at: string;
