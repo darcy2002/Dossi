@@ -3,6 +3,7 @@
 **Meeting prep that reads like you spent an afternoon doing the homework.**
 
 **[Live app](https://dossi-frontend.onrender.com)** · **[Demo video](https://www.loom.com/share/6f4032b0ce354cbea0a5c53046b72362)** 
+
 Drop in a company name, website, and meeting objective. Dossi researches the company and comes back with a nine-section briefing: overview, products, customers, business signals, risks, discovery questions, outreach strategy, unknowns, and sources. Then you can chat with the briefing — draft an email, prep talking points, or dig into anything that surfaced.
 
 The idea behind every decision: this is a **research pipeline, not a form**. One run does the work, and the whole product exists to make that run good:
